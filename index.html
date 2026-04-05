@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>TRADE FLOOR v3 // PORT 1100</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Roboto+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --bg-dark: #0a0e14; --card-bg: #151b23; --neon-green: #00ff88; --neon-red: #ff3366; --neon-blue: #00d4ff; --neon-yellow: #ffcc00; --text-main: #e6edf3; --border: #30363d; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Roboto Mono', monospace; background-color: var(--bg-dark); color: var(--text-main); font-size: 13px; }
+        header { background: #000; padding: 8px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--neon-blue); }
+        .logo { font-family: 'Orbitron'; font-size: 18px; color: var(--neon-blue); }
+        .timer-box { font-size: 24px; color: var(--neon-yellow); font-weight: bold; }
+        nav { background: var(--card-bg); padding: 4px; display: flex; gap: 8px; border-bottom: 1px solid var(--border); }
+        .nav-btn { background: transparent; color: white; border: 1px solid var(--border); padding: 6px 12px; cursor: pointer; font-family: 'Orbitron'; font-size: 10px; }
+        .nav-btn.active { background: var(--neon-blue); color: black; }
+        .view-container { padding: 15px; display: none; height: calc(100vh - 110px); }
+        .view-container.active { display: block; }
+        .dashboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .chart-card { background: var(--card-bg); border: 1px solid var(--border); padding: 8px; border-radius: 6px; height: 160px; }
+        .chart-header { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; font-weight: bold; }
+        .admin-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+        .admin-card { background: #1c2128; border: 1px solid #444; padding: 10px; border-radius: 8px; }
+        input, select { width: 100%; padding: 8px; background: #0d1117; border: 1px solid var(--border); color: white; margin-bottom: 10px; }
+        .btn { padding: 10px; cursor: pointer; border: none; font-family: 'Orbitron'; font-weight: bold; font-size: 11px; }
+        .news-ticker { position: fixed; bottom: 0; width: 100%; background: #000; color: var(--neon-yellow); padding: 4px; border-top: 1px solid var(--neon-yellow); white-space: nowrap; overflow: hidden; }
+        .ticker-text { display: inline-block; animation: ticker 25s linear infinite; font-size: 12px; }
+        @keyframes ticker { 0% { transform: translateX(100%); } 100% { transform: translateX(-100%); } }
+        canvas { max-height: 110px !important; }
+    </style>
+</head>
+<body>
+
+<header>
+    <div class="logo">TRADE FLOOR // LIVE</div>
+    <div class="timer-box" id="global-timer">10:00</div>
+    <div id="m-status" style="color: var(--neon-green)">MARKET OPEN</div>
+</header>
+
+<nav>
+    <button class="nav-btn active" onclick="showView('dashboard')">DASHBOARD</button>
+    <button class="nav-btn" onclick="showView('trading')">PLAYER TERMINAL</button>
+    <button class="nav-btn" onclick="showView('leaderboard')">RANKINGS</button>
+    <button class="nav-btn" onclick="showView('admin')">ADMIN PANEL</button>
+</nav>
+
+<div id="view-dashboard" class="view-container active">
+    <div class="dashboard-grid">
+        <div class="chart-card"><div class="chart-header">ALPHA TECH <span id="pr-ALPH">0</span></div><canvas id="c-ALPH"></canvas></div>
+        <div class="chart-card"><div class="chart-header">BETA ENERGY <span id="pr-BETA">0</span></div><canvas id="c-BETA"></canvas></div>
+        <div class="chart-card"><div class="chart-header">GAMMA REALTY <span id="pr-GAMM">0</span></div><canvas id="c-GAMM"></canvas></div>
+        <div class="chart-card"><div class="chart-header">DELTA PHARMA <span id="pr-DELT">0</span></div><canvas id="c-DELT"></canvas></div>
+    </div>
+</div>
+
+<div id="view-trading" class="view-container">
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+        <div class="admin-card">
+            <h3 style="color:var(--neon-blue); margin-bottom:10px;">ORDER FORM</h3>
+            <label>Select Your Team</label>
+            <select id="p-select"><option value="">-- Choose Name --</option></select>
+            <label>Asset</label>
+            <select id="s-select"><option value="ALPH">ALPHA TECH</option><option value="BETA">BETA ENERGY</option><option value="GAMM">GAMMA REALTY</option><option value="DELT">DELTA PHARMA</option></select>
+            <label>Qty</label><input type="number" id="qty-input" value="10">
+            <div style="display: flex; gap: 8px;"><button class="btn" style="background:var(--neon-green); color:black; flex:1;" onclick="trade('BUY')">BUY</button><button class="btn" style="background:var(--neon-red); color:white; flex:1;" onclick="trade('SELL')">SELL</button></div>
+        </div>
+        <div class="admin-card">
+            <h3 style="color:var(--neon-yellow); margin-bottom:10px;">YOUR PORTFOLIO</h3>
+            <p>Cash: <span id="my-cash" style="color:var(--neon-yellow)">₹0</span></p>
+            <div id="my-holdings" style="margin-top:10px; font-size:11px;"></div>
+        </div>
+    </div>
+</div>
+
+<div id="view-leaderboard" class="view-container">
+    <table style="width:100%; text-align:left;" id="lb-table"><thead><tr><th>RANK</th><th>TEAM NAME</th><th>TOTAL VALUATION</th></tr></thead><tbody></tbody></table>
+</div>
+
+<div id="view-admin" class="view-container">
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+        <div class="admin-card">
+            <h4>REGISTRATION</h4>
+            <input type="text" id="new-p" placeholder="Team Name">
+            <button class="btn" style="background:var(--neon-blue); width:100%" onclick="adminS('REG_PLAYER', {name: document.getElementById('new-p').value})">ADD TEAM</button>
+            <hr style="margin:10px 0; opacity:0.1">
+            <button class="btn" style="background:var(--neon-red); width:100%" onclick="adminS('RESET')">RESTART GAME</button>
+            <button class="btn mt-2" style="background:var(--neon-yellow); width:100%; color:black;" onclick="adminS('HALT')">HALT MARKET</button>
+        </div>
+        <div class="admin-card">
+            <h4>STOCK EVENTS</h4>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:4px">
+                <button class="btn" style="background:var(--neon-green); color:black" onclick="adminS('GLOBAL', {event:'BOOM'})">GLOBAL BOOM</button>
+                <button class="btn" style="background:var(--neon-red); color:white" onclick="adminS('GLOBAL', {event:'CRASH'})">GLOBAL CRASH</button>
+                <button class="btn" style="font-size:8px" onclick="adminS('STOCK_EVENT',{symbol:'ALPH', factor:0.4})">ALPH BOOM</button>
+                <button class="btn" style="font-size:8px" onclick="adminS('STOCK_EVENT',{symbol:'ALPH', factor:-0.3})">ALPH CRASH</button>
+                <button class="btn" style="font-size:8px" onclick="adminS('STOCK_EVENT',{symbol:'BETA', factor:0.4})">BETA BOOM</button>
+                <button class="btn" style="font-size:8px" onclick="adminS('STOCK_EVENT',{symbol:'BETA', factor:-0.3})">BETA CRASH</button>
+                <button class="btn" style="font-size:8px" onclick="adminS('STOCK_EVENT',{symbol:'GAMM', factor:0.4})">GAMM BOOM</button>
+                <button class="btn" style="font-size:8px" onclick="adminS('STOCK_EVENT',{symbol:'GAMM', factor:-0.3})">GAMM CRASH</button>
+                <button class="btn" style="font-size:8px" onclick="adminS('STOCK_EVENT',{symbol:'DELT', factor:0.4})">DELT BOOM</button>
+                <button class="btn" style="font-size:8px" onclick="adminS('STOCK_EVENT',{symbol:'DELT', factor:-0.3})">DELT CRASH</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="news-ticker"><div id="ticker" class="ticker-text">...</div></div>
+
+<script>
+    const socket = io();
+    const charts = {};
+    let adminPass = "";
+
+    function init() {
+        ['ALPH', 'BETA', 'GAMM', 'DELT'].forEach(s => {
+            const ctx = document.getElementById(`c-${s}`).getContext('2d');
+            charts[s] = new Chart(ctx, {
+                type: 'line',
+                data: { labels: Array(25).fill(''), datasets: [{ data: [], borderColor: 'white', borderWidth: 2, pointRadius: 0, tension: 0.3 }] },
+                options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display:false }}, scales: { x: { display:false }, y: { display:false }}}
+            });
+        });
+    }
+
+    socket.on('sync', s => {
+        document.getElementById('ticker').innerText = s.news;
+        const mins = Math.floor(s.timeRemaining / 60), secs = s.timeRemaining % 60;
+        document.getElementById('global-timer').innerText = `${mins}:${secs.toString().padStart(2, '0')}`;
+        document.getElementById('m-status').innerText = s.marketOpen ? "MARKET OPEN" : "MARKET HALTED";
+        document.getElementById('m-status').style.color = s.marketOpen ? "var(--neon-green)" : "var(--neon-red)";
+
+        Object.keys(s.stocks).forEach(k => {
+            const st = s.stocks[k];
+            document.getElementById(`pr-${k}`).innerText = `₹${st.price.toFixed(0)}`;
+            charts[k].data.datasets[0].data = st.history;
+            charts[k].data.datasets[0].borderColor = st.color;
+            charts[k].update('none');
+        });
+
+        const ddl = document.getElementById('p-select');
+        const currentVal = ddl.value;
+        ddl.innerHTML = '<option value="">-- Select Team --</option>' + Object.keys(s.players).map(p => `<option value="${p}">${p}</option>`).join('');
+        ddl.value = currentVal;
+
+        if(currentVal && s.players[currentVal]) {
+            const p = s.players[currentVal];
+            document.getElementById('my-cash').innerText = `₹${p.cash.toLocaleString()}`;
+            document.getElementById('my-holdings').innerHTML = Object.keys(p.holdings).map(k => p.holdings[k] > 0 ? `<p>${k}: ${p.holdings[k]}</p>` : '').join('');
+        }
+
+        const lb = Object.keys(s.players).map(name => {
+            let val = s.players[name].cash;
+            Object.keys(s.players[name].holdings).forEach(k => val += s.players[name].holdings[k] * s.stocks[k].price);
+            return { name, val };
+        }).sort((a,b) => b.val - a.val);
+        document.querySelector('#lb-table tbody').innerHTML = lb.map((p,i) => `<tr><td>${i+1}</td><td>${p.name}</td><td>₹${p.val.toLocaleString()}</td></tr>`).join('');
+    });
+
+    function showView(id) {
+        if(id === 'admin' && !adminPass) adminPass = prompt("Admin Password:");
+        if(id === 'admin' && adminPass !== 'boss') { alert('Access Denied'); return; }
+        document.querySelectorAll('.view-container').forEach(v => v.classList.remove('active'));
+        document.getElementById('view-' + id).classList.add('active');
+    }
+
+    function trade(type) {
+        const playerName = document.getElementById('p-select').value;
+        if(!playerName) return alert("Select team!");
+        socket.emit('trade', { type, playerName, symbol: document.getElementById('s-select').value, qty: parseInt(document.getElementById('qty-input').value) });
+    }
+
+    function adminS(type, extra = {}) { socket.emit('adminAction', { password: adminPass, type, ...extra }); }
+    init();
+</script>
+</body>
+</html>
